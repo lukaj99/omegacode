@@ -44,6 +44,8 @@ const EFFORT_TO_THINKING: Record<Effort, string> = {
   high: "high",
   xhigh: "xhigh",
   max: "max",
+  // "ultra" is a muse-client-side tier above every thinking scale — pi's top level.
+  ultra: "max",
 }
 
 /** pi gained a public "max" thinking level in 1.1.0 (verified live: --thinking max accepted
@@ -52,7 +54,7 @@ const EFFORT_TO_THINKING: Record<Effort, string> = {
 const PI_MAX_VERSION = "1.1.0"
 
 function toPiThinking(effort: Effort, version: string): string {
-  if (effort === "max" && !versionAtLeast(version, PI_MAX_VERSION)) return "xhigh"
+  if ((effort === "max" || effort === "ultra") && !versionAtLeast(version, PI_MAX_VERSION)) return "xhigh"
   return EFFORT_TO_THINKING[effort]
 }
 

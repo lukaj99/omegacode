@@ -1,15 +1,17 @@
 // Shared type contracts for the whole system. Everything compiles against these.
 
 /** The closed set of backend providers. Model strings stay open — each backend is authoritative. */
-export const PROVIDER_IDS = ["codex", "claude-code", "opencode", "pi"] as const
+export const PROVIDER_IDS = ["codex", "claude-code", "opencode", "pi", "muse"] as const
 export type ProviderId = (typeof PROVIDER_IDS)[number]
 
 /** read-only: no writes; workspace-write: write within cwd; danger-full-access: unrestricted. */
 export type Sandbox = "read-only" | "workspace-write" | "danger-full-access"
 
-// Union of both providers' reasoning-effort levels. codex: none/minimal/low/medium/high/xhigh;
-// claude-code: low/medium/high/xhigh/max. Each worker maps to its nearest supported value.
-export type Effort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max"
+// Union of all providers' reasoning-effort levels. codex: none/minimal/low/medium/high/xhigh;
+// claude-code: low/medium/high/xhigh/max; pi: off/minimal/low/medium/high/xhigh/max;
+// muse: none/minimal/low/medium/high/xhigh/max/ultra (the full range). Each worker maps to
+// its nearest supported value; only muse passes every level through untouched.
+export type Effort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra"
 
 export type Approval = "never" | "on-request"
 

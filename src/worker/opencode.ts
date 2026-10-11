@@ -102,10 +102,14 @@ export class OpencodeWorker implements Worker {
           "#suffix on --model) — set a model or omit effort",
       })
     }
+    // "ultra" is a muse-client-side tier no opencode provider defines (Meta 400s it as a
+    // variant) — map to the top catalog tier instead of failing at the provider. "max"
+    // passes through: providers that define it (e.g. a custom variant) resolve it.
+    const variant = spec.effort === "ultra" ? "xhigh" : spec.effort
     const modelArg =
       spec.model === undefined
         ? []
-        : ["--model", modern && spec.effort !== undefined && !spec.model.includes("#") ? `${spec.model}#${spec.effort}` : spec.model]
+        : ["--model", modern && variant !== undefined && !spec.model.includes("#") ? `${spec.model}#${variant}` : spec.model]
 
     const args = [
       "run",
@@ -114,7 +118,7 @@ export class OpencodeWorker implements Worker {
       // The boolean thinking gate defaults to false in noninteractive mode; without it the JSON
       // stream carries no `reasoning` events at all.
       "--thinking",
-      ...(spec.effort !== undefined && !modern ? ["--variant", spec.effort] : []),
+      ...(variant !== undefined && !modern ? ["--variant", variant] : []),
       ...modelArg,
       // danger-full-access is the only sandbox that reaches this point: permission asks would
       // otherwise be auto-REJECTED by noninteractive opencode (fail-closed, but useless).

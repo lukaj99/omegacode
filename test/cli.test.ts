@@ -304,7 +304,7 @@ describe("CLI end-to-end (--fake)", () => {
   })
 
   test("invalid OMEGACODE_EFFORT exits 1 with a friendly message, not a stack", async () => {
-    const r = await runCli(["run", wf, "--fake", "--no-serve"], { OMEGACODE_HOME: home, OMEGACODE_EFFORT: "ultra" })
+    const r = await runCli(["run", wf, "--fake", "--no-serve"], { OMEGACODE_HOME: home, OMEGACODE_EFFORT: "hyper" })
     assert.equal(r.code, 1)
     assert.match(r.stderr, /OMEGACODE_EFFORT must be one of/)
     assert.doesNotMatch(r.stderr, /at \w+ \(/)
@@ -341,10 +341,10 @@ describe("CLI end-to-end (--fake)", () => {
     assert.equal(ok.code, 0, `stderr=${ok.stderr}`)
     assert.equal(JSON.parse(ok.stdout).status, "completed")
     const badWf = join(home, "effort-bad.workflow.js")
-    writeFileSync(badWf, `export const meta = { name: "effort-bad", description: "x", defaultEffort: "ultra" }\nconst a = await agent("say hi")\nreturn a\n`)
+    writeFileSync(badWf, `export const meta = { name: "effort-bad", description: "x", defaultEffort: "hyper" }\nconst a = await agent("say hi")\nreturn a\n`)
     const bad = await runCli(["run", badWf, "--fake", "--no-serve"], { OMEGACODE_HOME: home })
     assert.equal(bad.code, 1)
-    assert.match(bad.stderr, /invalid effort "ultra"/)
+    assert.match(bad.stderr, /invalid effort "hyper"/)
   })
 
   test("doctor resolves bins via env overrides and flags below-minimum versions as OUTDATED", { skip: process.platform === "win32" }, async () => {

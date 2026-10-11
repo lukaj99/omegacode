@@ -212,6 +212,15 @@ test("pi ≥1.1.0 passes max through as --thinking max (no stale downgrade)", as
   assert.equal(args[args.indexOf("--thinking") + 1], "max")
 })
 
+test("ultra maps to pi's top: max on ≥1.1.0, xhigh below", async () => {
+  const modern = harness([version11, happyRun])
+  await modern.worker.runAgent(spec({ effort: "ultra" }), ctx())
+  assert.equal(modern.spawned[1]!.args[modern.spawned[1]!.args.indexOf("--thinking") + 1], "max")
+  const legacy = harness([versionOk, happyRun])
+  await legacy.worker.runAgent(spec({ effort: "ultra" }), ctx())
+  assert.equal(legacy.spawned[1]!.args[legacy.spawned[1]!.args.indexOf("--thinking") + 1], "xhigh")
+})
+
 test("pi ≥1.1.0 keeps every other tier mapping unchanged", async () => {
   const cases: Array<[Effort, string]> = [
     ["none", "off"],

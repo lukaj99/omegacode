@@ -38,6 +38,7 @@ export interface RunOverrides {
   /** Binary overrides for the subprocess workers (programmatic equivalent of OPENCODE_BIN/PI_BIN). */
   opencodeBin?: string
   piBin?: string
+  museBin?: string
 }
 
 export interface RunOptions {
@@ -113,6 +114,7 @@ export async function runWorkflow(opts: RunOptions): Promise<RunOutcome> {
     codexBin: process.env.CODEX_BIN,
     opencodeBin: opts.overrides?.opencodeBin ?? process.env.OPENCODE_BIN,
     piBin: opts.overrides?.piBin ?? process.env.PI_BIN,
+    museBin: opts.overrides?.museBin ?? process.env.MUSE_BIN,
     // Claude-specific factory defaults (L5). Only forwarded when the provider is claude-code; a
     // per-call opts.model still overrides via AgentSpec.model.
     claudeModel: opts.overrides?.claudeModel ?? (defaults.provider === "claude-code" ? defaults.model : undefined),

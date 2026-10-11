@@ -178,6 +178,16 @@ test("opencode 2.x: effort rides as a #variant suffix on --model (the --variant 
   ])
 })
 
+test("ultra maps to the top catalog tier (xhigh) on both opencode generations", async () => {
+  const modern = harness([version2x, happyRun])
+  await modern.worker.runAgent(spec({ model: "meta/muse-spark-1.3-contributor", effort: "ultra" }), ctx())
+  assert.ok(modern.spawned[1]!.args.includes("meta/muse-spark-1.3-contributor#xhigh"))
+  const legacy = harness([versionOk, happyRun])
+  await legacy.worker.runAgent(spec({ model: "meta/muse-spark-1.3-contributor", effort: "ultra" }), ctx())
+  const args = legacy.spawned[1]!.args
+  assert.deepEqual([args[args.indexOf("--variant")], args[args.indexOf("--variant") + 1]], ["--variant", "xhigh"])
+})
+
 test("opencode 1.x: effort still uses the --variant flag", async () => {
   const h = harness([versionOk, happyRun])
   await h.worker.runAgent(spec({ model: "meta/muse-spark-1.3-contributor", effort: "xhigh" }), ctx())
