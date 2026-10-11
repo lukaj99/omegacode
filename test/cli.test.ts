@@ -280,6 +280,42 @@ describe("CLI end-to-end (--fake)", () => {
     assert.match(m.stderr, /model "gpt-5.5" without provider — provider and model must be specified together/)
   })
 
+  test("OMEGACODE_* env supplies run defaults when flags are absent", async () => {
+    const r = await runCli(["run", wf, "--fake", "--no-serve", "--json"], {
+      OMEGACODE_HOME: home,
+      OMEGACODE_PROVIDER: "opencode",
+      OMEGACODE_MODEL: "openrouter/foo/bar",
+      OMEGACODE_EFFORT: "xhigh",
+      OMEGACODE_SANDBOX: "danger-full-access",
+    })
+    assert.equal(r.code, 0, `stderr=${r.stderr}`)
+    assert.equal(JSON.parse(r.stdout).status, "completed")
+  })
+
+  test("a CLI flag beats its OMEGACODE_* env: lone --provider still rejected with env model set", async () => {
+    // The flag site wins atomically — the env model must not pair with the flag provider.
+    const r = await runCli(["run", wf, "--provider", "codex", "--fake", "--no-serve"], {
+      OMEGACODE_HOME: home,
+      OMEGACODE_PROVIDER: "opencode",
+      OMEGACODE_MODEL: "openrouter/foo/bar",
+    })
+    assert.equal(r.code, 1)
+    assert.match(r.stderr, /provider "codex" without model/)
+  })
+
+  test("invalid OMEGACODE_EFFORT exits 1 with a friendly message, not a stack", async () => {
+    const r = await runCli(["run", wf, "--fake", "--no-serve"], { OMEGACODE_HOME: home, OMEGACODE_EFFORT: "ultra" })
+    assert.equal(r.code, 1)
+    assert.match(r.stderr, /OMEGACODE_EFFORT must be one of/)
+    assert.doesNotMatch(r.stderr, /at \w+ \(/)
+  })
+
+  test("lone OMEGACODE_PROVIDER without OMEGACODE_MODEL is rejected (both-or-neither at the env site)", async () => {
+    const r = await runCli(["run", wf, "--fake", "--no-serve"], { OMEGACODE_HOME: home, OMEGACODE_PROVIDER: "opencode" })
+    assert.equal(r.code, 1)
+    assert.match(r.stderr, /provider "opencode" without model/)
+  })
+
   test("doctor resolves bins via env overrides and flags below-minimum versions as OUTDATED", { skip: process.platform === "win32" }, async () => {
     // Stub binaries: opencode reports an outdated version, pi a current one.
     const ocStub = join(home, "fake-opencode")

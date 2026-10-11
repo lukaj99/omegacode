@@ -4,7 +4,8 @@
 // Safety surface (full-access only): opencode has no OS-level sandbox and its app-level permission
 // rules leave bash unconfined, so the ONLY accepted sandbox is danger-full-access (passed through
 // as --dangerously-skip-permissions); read-only and workspace-write are rejected pre-spawn.
-// `effort` maps to opencode's provider-specific `--variant` flag. `instructions` IS supported (as a delimited prompt preamble —
+// `effort` maps to opencode's provider-specific variant: the `--variant` flag on 1.x, a
+// `#variant` suffix on --model for 2.x (which dropped the flag). `instructions` IS supported (as a delimited prompt preamble —
 // `run` has no system-prompt flag): the runtime's corrective schema retry travels through it.
 //
 // Verified against opencode 1.16.2 (anomalyco/opencode @ e9e2612); older binaries are refused.
@@ -47,7 +48,7 @@ export class OpencodeWorker implements Worker {
   private readonly spawnProcess?: SpawnProcess
   private readonly stallTimeoutMs: number
   /** Once-per-worker version preflight (the factory caches one worker per provider). */
-  private versionCheck: Promise<void> | null = null
+  private versionCheck: Promise<string> | null = null
 
   constructor(opts: OpencodeWorkerOpts = {}) {
     this.bin = opts.bin ?? "opencode"
@@ -86,7 +87,16 @@ export class OpencodeWorker implements Worker {
         message: `opencode runs as a one-shot subprocess and cannot surface approval requests to omegacode — use approval: "never" with provider "opencode"`,
       })
     }
-    await this.ensureVersion()
+    const version = await this.ensureVersion()
+    // opencode 2.x dropped the --variant flag (passing it is a hard "Unrecognized flag"
+    // failure, observed live on 2.0.26). There the variant rides as a #suffix on --model
+    // (`--model provider/model#variant`, per run --help). Without a model there is nowhere
+    // to hang it, so effort is omitted and the model default from opencode.json governs.
+    const modern = versionAtLeast(version, "2.0.0")
+    const modelArg =
+      spec.model === undefined
+        ? []
+        : ["--model", modern && spec.effort !== undefined && !spec.model.includes("#") ? `${spec.model}#${spec.effort}` : spec.model]
 
     const args = [
       "run",
@@ -95,8 +105,8 @@ export class OpencodeWorker implements Worker {
       // The boolean thinking gate defaults to false in noninteractive mode; without it the JSON
       // stream carries no `reasoning` events at all.
       "--thinking",
-      ...(spec.effort ? ["--variant", spec.effort] : []),
-      ...(spec.model ? ["--model", spec.model] : []),
+      ...(spec.effort !== undefined && !modern ? ["--variant", spec.effort] : []),
+      ...modelArg,
       // danger-full-access is the only sandbox that reaches this point: permission asks would
       // otherwise be auto-REJECTED by noninteractive opencode (fail-closed, but useless).
       "--dangerously-skip-permissions",
@@ -137,7 +147,7 @@ export class OpencodeWorker implements Worker {
 
   // -------------------------------------------------------------------------
 
-  private ensureVersion(): Promise<void> {
+  private ensureVersion(): Promise<string> {
     if (!this.versionCheck) {
       this.versionCheck = this.checkVersion().catch((err: unknown) => {
         // Do not cache failures — a transient --version hiccup must not poison the worker.
@@ -148,7 +158,7 @@ export class OpencodeWorker implements Worker {
     return this.versionCheck
   }
 
-  private async checkVersion(): Promise<void> {
+  private async checkVersion(): Promise<string> {
     const out = await captureStdout({
       provider: PROVIDER,
       bin: this.bin,
@@ -164,6 +174,7 @@ export class OpencodeWorker implements Worker {
         retryable: false,
       })
     }
+    return out
   }
 
   private env(): NodeJS.ProcessEnv {

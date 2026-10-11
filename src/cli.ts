@@ -144,6 +144,22 @@ function enumFlag<T extends string>(flags: Flags, name: string, allowed: readonl
   return raw as T
 }
 
+/** Read an env var as a bare string. Empty = unset (so `export FOO=` never overrides). */
+function strEnv(name: string): string | undefined {
+  const raw = process.env[name]
+  return raw === undefined || raw === "" ? undefined : raw
+}
+
+/** Parse an env var as an enum, throwing a friendly UsageError otherwise. */
+function enumEnv<T extends string>(name: string, allowed: readonly T[]): T | undefined {
+  const raw = strEnv(name)
+  if (raw === undefined) return undefined
+  if (!(allowed as readonly string[]).includes(raw)) {
+    throw new UsageError(`${name} must be one of ${allowed.join(", ")}, got "${raw}"`)
+  }
+  return raw as T
+}
+
 /** Resolve --port, defaulting to 4123. Must be a valid TCP port (1-65535). */
 function portFlag(flags: Flags): number {
   const raw = str(flags.port)
@@ -387,13 +403,19 @@ async function cmdRun(flags: Flags): Promise<void> {
   // user's original arg — names re-resolve on the next invocation.
   const resolvedFile = resolveFileOrName(file)
   const overrides: RunOverrides = {}
-  const provider = enumFlag(flags, "provider", PROVIDERS)
+  const flagProvider = enumFlag(flags, "provider", PROVIDERS)
+  const flagModel = str(flags.model)
+  // The env pair is atomic like the flag pair: if either --provider or --model is passed,
+  // both OMEGACODE_* values are ignored, so a flag can never pair with a model from another
+  // site (the gpt-5.5→claude-code leak, now across flag/env). Precedence: flag > env > meta.
+  const useEnvPair = flagProvider === undefined && flagModel === undefined
+  const provider = flagProvider ?? (useEnvPair ? enumEnv("OMEGACODE_PROVIDER", PROVIDERS) : undefined)
   if (provider) overrides.provider = provider
-  const model = str(flags.model)
+  const model = flagModel ?? (useEnvPair ? strEnv("OMEGACODE_MODEL") : undefined)
   if (model) overrides.model = model
-  const effort = enumFlag(flags, "effort", EFFORTS)
+  const effort = enumFlag(flags, "effort", EFFORTS) ?? enumEnv("OMEGACODE_EFFORT", EFFORTS)
   if (effort) overrides.effort = effort
-  const sandbox = enumFlag(flags, "sandbox", SANDBOXES)
+  const sandbox = enumFlag(flags, "sandbox", SANDBOXES) ?? enumEnv("OMEGACODE_SANDBOX", SANDBOXES)
   if (sandbox) overrides.sandbox = sandbox
   const cwd = str(flags.cwd)
   if (cwd) overrides.cwd = resolve(cwd)
@@ -652,6 +674,10 @@ Usage:
       --json                               print {runId,status,url,result,error} as JSON (viewer still starts)
       --open                               also open the browser to this run
       --no-serve                           don't auto-start the viewer
+
+  Env defaults (used when the matching flag is absent; flags always win):
+      OMEGACODE_PROVIDER OMEGACODE_MODEL   provider+model pair (both or neither, like the flags)
+      OMEGACODE_EFFORT OMEGACODE_SANDBOX   default effort / sandbox
 
   By default \`run\` auto-starts the viewer (if not already up) and prints the run's URL
   (with --json the URL is in the JSON \`url\` field and the \`view:\` line is suppressed).
