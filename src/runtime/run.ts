@@ -3,7 +3,7 @@
 
 import { createHash, randomBytes } from "node:crypto"
 import { readFileSync, writeFileSync } from "node:fs"
-import { join, resolve } from "node:path"
+import { dirname, join, resolve } from "node:path"
 import { DEFAULTS, type Effort, type ProviderId, type RunDefaults, type Sandbox } from "../dsl/types.js"
 import { DefaultWorkerFactory } from "../worker/factory.js"
 import { type EventListener, FileEventSink } from "./event-sink.js"
@@ -20,6 +20,7 @@ import {
 } from "./journal.js"
 import { checkProviderModelPair, checkSpecEnum, Runtime } from "./primitives.js"
 import { parseWorkflow } from "./sandbox.js"
+import { analyzeWorkflow } from "./analyze.js"
 import { TerminalRenderer } from "./progress.js"
 import { runInSandbox } from "./sandbox.js"
 
@@ -82,6 +83,14 @@ export async function runWorkflow(opts: RunOptions): Promise<RunOutcome> {
   }
 
   const parsed = parseWorkflow(source)
+  // Fail fast on unresolvable workflow() refs — before the run dir, journal and heartbeat
+  // exist. Warnings (loops, phase titles) stay advisory: validate shows them, runs ignore them.
+  const { errors: refErrors } = analyzeWorkflow(source, { cwd: dirname(filePath) })
+  if (refErrors.length > 0) {
+    throw new Error(
+      "workflow analysis failed: " + refErrors.map((e) => `[${e.code}]${e.line ? ` (line ${e.line})` : ""}: ${e.message}`).join("; "),
+    )
+  }
   const defaults = resolveDefaults(parsed.meta, opts)
 
   const runId = opts.resumeRunId ?? newRunId()

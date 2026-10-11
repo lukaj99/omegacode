@@ -501,6 +501,15 @@ async function cmdValidate(flags: Flags): Promise<void> {
   const { meta } = parseWorkflow(source)
   console.log(`ok: "${meta.name}" — ${meta.description}`)
   if (meta.phases) console.log("phases: " + meta.phases.map((p) => p.title).join(" → "))
+  // Static analysis: fail on unresolvable workflow() refs, advise on smells. Blessed
+  // patterns (dedup barriers, loop-until-dry, conditional phases) never trip these.
+  const { analyzeWorkflow } = await import("./runtime/analyze.js")
+  const { errors, warnings } = analyzeWorkflow(source, { cwd: process.cwd() })
+  for (const w of warnings) console.log(`warn [${w.code}]${w.line ? ` (line ${w.line})` : ""}: ${w.message}`)
+  if (errors.length > 0) {
+    for (const e of errors) console.error(`error [${e.code}]${e.line ? ` (line ${e.line})` : ""}: ${e.message}`)
+    process.exitCode = 1
+  }
 }
 
 /**
