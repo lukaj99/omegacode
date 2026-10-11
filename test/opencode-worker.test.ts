@@ -194,12 +194,13 @@ test("opencode 1.x: effort still uses the --variant flag", async () => {
   ])
 })
 
-test("opencode 2.x: effort without a model is omitted (nowhere to hang the suffix)", async () => {
+test("opencode 2.x: effort without a model fails closed (no silent default-effort run)", async () => {
   const h = harness([version2x, happyRun])
-  await h.worker.runAgent(spec({ effort: "xhigh" }), ctx())
-  const args = h.spawned[1]!.args
-  assert.ok(!args.includes("--variant"))
-  assert.ok(!args.includes("--model"))
+  await assert.rejects(
+    h.worker.runAgent(spec({ effort: "xhigh" }), ctx()),
+    /effort without a model is inexpressible on opencode 2\.x/,
+  )
+  assert.equal(h.spawned.length, 1) // version probe only — no agent was ever spawned
 })
 
 test("an explicit #variant in the model is not double-suffixed", async () => {

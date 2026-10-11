@@ -181,7 +181,7 @@ export async function runWorkflow(opts: RunOptions): Promise<RunOutcome> {
   return { runId, result, status, error }
 }
 
-function resolveDefaults(meta: { defaultProvider?: ProviderId; defaultModel?: string; defaultSandbox?: Sandbox }, opts: RunOptions): RunDefaults {
+function resolveDefaults(meta: { defaultProvider?: ProviderId; defaultModel?: string; defaultSandbox?: Sandbox; defaultEffort?: Effort }, opts: RunOptions): RunDefaults {
   const o = opts.overrides ?? {}
   // An invalid concurrency (0 / NaN / fractional) would build a Semaphore that never admits anyone:
   // every agent() queues forever while the heartbeat keeps beating, so the deadman never flags it.
@@ -190,17 +190,24 @@ function resolveDefaults(meta: { defaultProvider?: ProviderId; defaultModel?: st
   if (!Number.isInteger(concurrency) || concurrency < 1) {
     throw new Error(`invalid concurrency: ${concurrency} — must be a positive integer`)
   }
-  // An invalid sandbox/effort from meta.defaultSandbox or a library-caller override would flow
-  // unvalidated into every spec and fall off the worker policy switches (H14) — e.g. "readonly"
-  // (typo for "read-only") becomes effectively writable. Fail here, like concurrency above.
-  // resolveSpec re-checks the resolved per-call values, covering workflow-body opts too.
-  const sandbox = o.sandbox ?? meta.defaultSandbox ?? DEFAULTS.sandbox
-  checkSpecEnum("sandbox", sandbox)
-  checkSpecEnum("effort", o.effort)
+  // An invalid sandbox/effort from meta.defaultSandbox/meta.defaultEffort or a library-caller
+  // override would flow unvalidated into every spec and fall off the worker policy switches
+  // (H14) — e.g. "readonly" (typo for "read-only") becomes effectively writable. Fail here,
+  // like concurrency above. resolveSpec re-checks the resolved per-call values, covering
+  // workflow-body opts too.
   // meta.defaultProvider arrives from an untyped workflow file — a typo here would otherwise ride
   // into every spec and only fail at the factory (or not at all under --fake).
   const provider = o.provider ?? meta.defaultProvider ?? DEFAULTS.provider
   checkSpecEnum("provider", provider)
+  // opencode/pi cannot run confined (their workers reject anything but danger-full-access),
+  // so the read-only DEFAULTS.sandbox auto-upgrades for exactly those providers. codex/claude
+  // keep the confined default unless the run asked otherwise — danger-full-access everywhere
+  // would silently un-confine providers that CAN enforce it.
+  const sandbox =
+    o.sandbox ?? meta.defaultSandbox ?? (provider === "opencode" || provider === "pi" ? "danger-full-access" : DEFAULTS.sandbox)
+  checkSpecEnum("sandbox", sandbox)
+  const effort = o.effort ?? meta.defaultEffort ?? DEFAULTS.effort
+  checkSpecEnum("effort", effort)
   // Both-or-neither per SITE (CLI flags, meta defaults): a lone --model would pair with a provider
   // chosen elsewhere — the gpt-5.5→claude-code leak. Each site supplies the pair atomically, so the
   // field-wise resolution below can never mix a provider from one site with a model from another.
@@ -209,8 +216,8 @@ function resolveDefaults(meta: { defaultProvider?: ProviderId; defaultModel?: st
   checkProviderModelPair(meta.defaultProvider, meta.defaultModel, "meta.defaultProvider/defaultModel")
   return {
     provider,
-    model: o.model ?? meta.defaultModel,
-    effort: o.effort,
+    model: o.model ?? meta.defaultModel ?? DEFAULTS.model,
+    effort,
     sandbox,
     approval: DEFAULTS.approval,
     cwd: resolve(o.cwd ?? process.cwd()),

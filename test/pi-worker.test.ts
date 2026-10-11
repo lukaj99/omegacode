@@ -65,6 +65,11 @@ const versionOk: Script = (p) => {
   p.end(0)
 }
 
+const version11: Script = (p) => {
+  p.stdout.emit("data", "1.1.0\n")
+  p.end(0)
+}
+
 function harness(scripts: Script[]): { worker: PiWorker; spawned: SpawnCall[] } {
   const spawned: SpawnCall[] = []
   const queue = [...scripts]
@@ -194,6 +199,30 @@ test("effort → --thinking mapping covers every tier (none→off, max→xhigh)"
   ]
   for (const [effort, thinking] of cases) {
     const h = harness([versionOk, happyRun])
+    await h.worker.runAgent(spec({ effort }), ctx())
+    const args = h.spawned[1]!.args
+    assert.equal(args[args.indexOf("--thinking") + 1], thinking, `effort=${effort}`)
+  }
+})
+
+test("pi ≥1.1.0 passes max through as --thinking max (no stale downgrade)", async () => {
+  const h = harness([version11, happyRun])
+  await h.worker.runAgent(spec({ effort: "max" }), ctx())
+  const args = h.spawned[1]!.args
+  assert.equal(args[args.indexOf("--thinking") + 1], "max")
+})
+
+test("pi ≥1.1.0 keeps every other tier mapping unchanged", async () => {
+  const cases: Array<[Effort, string]> = [
+    ["none", "off"],
+    ["minimal", "minimal"],
+    ["low", "low"],
+    ["medium", "medium"],
+    ["high", "high"],
+    ["xhigh", "xhigh"],
+  ]
+  for (const [effort, thinking] of cases) {
+    const h = harness([version11, happyRun])
     await h.worker.runAgent(spec({ effort }), ctx())
     const args = h.spawned[1]!.args
     assert.equal(args[args.indexOf("--thinking") + 1], thinking, `effort=${effort}`)

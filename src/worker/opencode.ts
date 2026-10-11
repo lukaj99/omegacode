@@ -91,8 +91,17 @@ export class OpencodeWorker implements Worker {
     // opencode 2.x dropped the --variant flag (passing it is a hard "Unrecognized flag"
     // failure, observed live on 2.0.26). There the variant rides as a #suffix on --model
     // (`--model provider/model#variant`, per run --help). Without a model there is nowhere
-    // to hang it, so effort is omitted and the model default from opencode.json governs.
+    // to hang it — fail closed rather than silently running at an unrequested effort.
     const modern = versionAtLeast(version, "2.0.0")
+    if (modern && spec.effort !== undefined && spec.model === undefined) {
+      throw new AgentError({
+        provider: PROVIDER,
+        code: "unsupported_option",
+        message:
+          "effort without a model is inexpressible on opencode 2.x (the variant rides as a " +
+          "#suffix on --model) — set a model or omit effort",
+      })
+    }
     const modelArg =
       spec.model === undefined
         ? []

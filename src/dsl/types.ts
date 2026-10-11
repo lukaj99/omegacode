@@ -95,6 +95,8 @@ interface MetaBase {
   description: string
   phases?: Array<{ title: string; detail?: string }>
   defaultSandbox?: Sandbox
+  /** Run-default effort for every agent() that omits opts.effort. CLI --effort / OMEGACODE_EFFORT win. */
+  defaultEffort?: Effort
   whenToUse?: string
 }
 
@@ -144,7 +146,14 @@ export interface RunDefaults {
 }
 
 export const DEFAULTS: Omit<RunDefaults, "cwd"> = {
-  provider: "codex",
+  // Fleet default: backend-agnostic Muse runs. A lone default provider/model pair can never
+  // mix with another site (flag/meta sites are atomic and validated), so these are safe.
+  provider: "opencode",
+  model: "meta/muse-spark-1.3-contributor",
+  effort: "xhigh",
+  // NOTE: sandbox stays read-only here; resolveDefaults upgrades it to danger-full-access
+  // when the resolved provider is opencode/pi (which cannot run otherwise) so codex/claude
+  // keep their confined default.
   sandbox: "read-only",
   approval: "never",
   concurrency: 100,
