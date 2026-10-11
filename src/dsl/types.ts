@@ -115,11 +115,24 @@ export interface WorkflowBudget {
   remaining(): number
 }
 
+/** Options for workflow(): run a saved workflow inline and return its result. */
+export interface WorkflowOpts {
+  /** Validate the child result against this schema (throws WorkflowError on mismatch, no retry). */
+  schema?: JSONSchema
+}
+
 /** The injected globals available inside a workflow file. */
 export interface WorkflowGlobals {
   agent: <T = string>(prompt: string, opts?: AgentOpts) => Promise<T>
   parallel: <T>(thunks: Array<() => Promise<T>>) => Promise<T[]>
   pipeline: (items: unknown[], ...stages: PipelineStage[]) => Promise<unknown[]>
+  /**
+   * Run a saved workflow inline (one level deep) and return its result. `ref` is a
+   * registry name or file path; `args` becomes the child's `args` global. The child
+   * shares this run's journal (namespaced keys), budget, workers and viewer feed —
+   * use it to compose conductors from leaf workflows.
+   */
+  workflow: <T = unknown>(ref: string, args?: unknown, opts?: WorkflowOpts) => Promise<T>
   phase: (title: string) => void
   log: (msg: string) => void
   now: () => number

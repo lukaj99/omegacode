@@ -45,12 +45,13 @@ const flaky = await agent('grep CI logs for retry markers', { schema: FLAKY_SCHE
 The `meta` object must be a PURE LITERAL — no variables, function calls, spreads, or template interpolation. Required fields: `name`, `description`. Optional: `phases`, plus run defaults `defaultProvider`+`defaultModel` (both-or-neither), `defaultEffort`, `defaultSandbox` — these travel with the file, so the workflow runs identically with no flags or env. Precedence everywhere: CLI flag > `OMEGACODE_*` env > `meta` defaults > built-in DEFAULTS (`opencode` / `meta/muse-spark-1.3-contributor` / `xhigh`; sandbox `read-only`, auto-upgraded to `danger-full-access` when the resolved provider is opencode/pi, which cannot run confined). Use the SAME phase titles in meta.phases as in phase() calls — titles are matched exactly; a phase() call with no matching meta entry just gets its own progress group.
 
 Script body hooks:
-- agent(prompt: string, opts?: {provider?: 'codex' | 'claude-code' | 'opencode' | 'pi', model?: string, effort?: string, schema?: object, label?: string, sandbox?: 'read-only' | 'workspace-write' | 'danger-full-access', cwd?: string, instructions?: string, maxTurns?: number, worktree?: boolean, key?: string}): Promise<any> — spawn an agent. Without schema, returns its final text as a string. With schema (a JSON Schema), the agent is forced to return JSON matching it and agent() returns the validated object — no parsing needed. Returns null if the user skips the agent mid-run (filter with .filter(Boolean)). opts.provider / opts.model: **default to omitting both** — the agent inherits the provider and model the workflow is being run with (flags > env > `meta.defaultProvider`/`defaultModel` > built-in `opencode` + `meta/muse-spark-1.3-contributor`), which is almost always correct. Only set them when the user explicitly asks for a specific provider/model, or you're highly confident a particular step needs a different one — and then set them **together**: provider and model are both-or-neither (a lone `provider:` or lone `model:` is an error, so a model meant for one provider can never silently ride a different provider's call). opts.label overrides the display label. opts.sandbox defaults to `read-only`; use `workspace-write` (write to cwd + network) only when the agent must write. opts.worktree: true runs the agent in a fresh git worktree — EXPENSIVE (setup + disk per agent), use ONLY when agents mutate files in parallel and would otherwise conflict; the worktree is auto-removed if unchanged. opts.key is a stable resume pin that survives prompt-wording/reordering edits.
+- agent(prompt: string, opts?: {provider?: 'codex' | 'claude-code' | 'opencode' | 'pi' | 'muse', model?: string, effort?: string, schema?: object, label?: string, sandbox?: 'read-only' | 'workspace-write' | 'danger-full-access', cwd?: string, instructions?: string, maxTurns?: number, worktree?: boolean, key?: string}): Promise<any> — spawn an agent. Without schema, returns its final text as a string. With schema (a JSON Schema), the agent is forced to return JSON matching it and agent() returns the validated object — no parsing needed. Returns null if the user skips the agent mid-run (filter with .filter(Boolean)). opts.provider / opts.model: **default to omitting both** — the agent inherits the provider and model the workflow is being run with (flags > env > `meta.defaultProvider`/`defaultModel` > built-in `opencode` + `meta/muse-spark-1.3-contributor`), which is almost always correct. Only set them when the user explicitly asks for a specific provider/model, or you're highly confident a particular step needs a different one — and then set them **together**: provider and model are both-or-neither (a lone `provider:` or lone `model:` is an error, so a model meant for one provider can never silently ride a different provider's call). opts.label overrides the display label. opts.sandbox defaults to `read-only`; use `workspace-write` (write to cwd + network) only when the agent must write. opts.worktree: true runs the agent in a fresh git worktree — EXPENSIVE (setup + disk per agent), use ONLY when agents mutate files in parallel and would otherwise conflict; the worktree is auto-removed if unchanged. opts.key is a stable resume pin that survives prompt-wording/reordering edits.
 - pipeline(items, stage1, stage2, ...): Promise<any[]> — run each item through all stages independently, NO barrier between stages. Item A can be in stage 3 while item B is still in stage 1. This is the DEFAULT for multi-stage work. Wall-clock = slowest single-item chain, not sum-of-slowest-per-stage. Every stage callback receives (prevResult, originalItem, index) — use originalItem/index in later stages to label work without threading context through stage 1's return value. A stage that throws drops that item to `null` and skips its remaining stages.
 - parallel(thunks: Array<() => Promise<any>>): Promise<any[]> — run tasks concurrently. This is a BARRIER: awaits all thunks before returning. A thunk that throws (or whose agent errors) resolves to `null` in the result array — the call itself never rejects, so `.filter(Boolean)` before using the results. Use ONLY when you genuinely need all results together.
 - log(message: string): void — emit a progress message to the user (shown as a narrator line above the progress tree)
 - phase(title: string): void — start a new phase; subsequent agent() calls are grouped under this title in the progress display
 - args: any — the value passed via `--args '<json>'` / `--args-file <f>`, verbatim (undefined if not provided). Use this to parameterize a workflow — e.g. pass a research question, target path, or config object.
+- workflow(ref: string, args?: any, opts?: {schema?: object}): Promise<any> — run a saved workflow inline (registry name or file path, one level deep) and return its result. Shares the run's journal/budget/workers/viewer; child phases render as `"<name> › <phase>"`. With `schema`, the child result is validated (no retry — fix the leaf on mismatch).
 - budget: {total: number|null, spent(): number, remaining(): number} — the run's output-token target, set with `--budget N`. `budget.total` is null if no target was set. `budget.spent()` returns output tokens spent this run. `budget.remaining()` returns `max(0, total - spent())`, or `Infinity` if no target. The target is a HARD ceiling, not advisory: once `spent()` reaches `total`, further `agent()` calls throw. Use for dynamic loops: `while (budget.total && budget.remaining() > 50_000) { ... }`, or static scaling: `const FLEET = budget.total ? Math.floor(budget.total / 100_000) : 5`.
 - now(): number / random(): number — journal-seeded deterministic time/RNG. Use these instead of `Date.now()`/`Math.random()` (which throw — see below).
 
@@ -200,6 +201,41 @@ Scale to what the user asked for. "find any bugs" → a few finders, single-vote
 These patterns aren't exhaustive — compose novel harnesses when the task calls for it (tournament brackets, self-repair loops, staged escalation, whatever fits).
 
 Use a workflow for multi-step orchestration where control flow should be deterministic (loops, conditionals, fan-out) rather than model-driven.
+
+## Composition: workflow() and checkpoints
+
+`workflow(ref, args?, { schema? })` runs a saved workflow inline and returns its result —
+`ref` is a registry name or file path, `args` becomes the child's `args` global. Nesting is
+ONE level deep (conductors call leaves; a leaf calling `workflow()` throws). The child shares
+the run's journal (namespaced keys), budget, workers and viewer feed — its phases render under
+`"<name> › <phase>"` and its agents count against the same `--budget` and agent cap.
+
+Resume interplay: the child's cache key mixes the call-site position, the ref, the leaf file
+hash AND the canonical args — editing the leaf, passing different args, or moving the call
+re-runs just that subtree; an unchanged subtree replays instantly. The child's `meta` defaults
+(`defaultProvider`/`defaultModel`/`defaultEffort`/`defaultSandbox`) override the run policy for
+its subtree; everything else (cwd, budget, caps) inherits. `{ schema }` validates the child
+result with no retry — a mismatch means the leaf shape drifted, so fix the leaf.
+
+```js
+// conductor: decompose once, build each module with the leaf, verify each result
+const plan = await agent('Decompose into modules', { schema: PLAN_SCHEMA })
+const built = await pipeline(
+  plan.modules,
+  m => workflow('implement-module', { module: m }),
+  (code, m) => workflow('deep-verify', { module: m.name, code }),
+)
+```
+
+Checkpoints (human-in-the-loop): workflows can't ask questions mid-run — `log()` is one-way.
+The idiom is to RETURN open questions as structured output, resolve them outside, and re-run
+with answers as `args` — resume caching makes the second pass nearly free:
+
+```js
+// pass 1: returns { decisions, openQuestions } instead of blocking
+// human resolves openQuestions → pass 2: workflow('build-feature', { answers }) replays
+// everything before the checkpoint from cache and continues
+```
 
 ## Resume
 

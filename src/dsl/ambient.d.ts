@@ -72,6 +72,9 @@ declare global {
 
   /** The CLI-supplied input (--args '<json>'); undefined if not passed. */
   const args: unknown
+
+  /** Run a saved workflow inline (one level deep) and return its result. */
+  function workflow<T = unknown>(ref: string, args?: unknown, opts?: { schema?: OmegacodeJSONSchema }): Promise<T>
 }
 
 export {}
